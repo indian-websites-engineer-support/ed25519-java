@@ -97,6 +97,13 @@ public class EdDSAPrivateKey implements EdDSAKey, PrivateKey {
      *</pre>
      *
      *<pre>
+     *  ... when encoding a OneAsymmetricKey object, the private key is wrapped
+     *  in an EdPrivateKey object and then placed in the 'privateKey' field.
+     *
+     *  EdPrivateKey ::= OCTET STRING
+     *</pre>
+     *
+     *<pre>
      *  AlgorithmIdentifier  ::=  SEQUENCE  {
      *    algorithm   OBJECT IDENTIFIER,
      *    parameters  ANY DEFINED BY algorithm OPTIONAL
@@ -112,18 +119,18 @@ public class EdDSAPrivateKey implements EdDSAKey, PrivateKey {
      * This encodes the seed. It will return null if constructed from
      * a spec which was directly constructed from H, in which case seed is null.
      *
-     * @return 46 bytes for Ed25519, null for other curves
+     * @return 48 bytes for Ed25519, null for other curves
      */
     @Override
     public byte[] getEncoded() {
         if (!edDsaSpec.equals(EdDSANamedCurveTable.getByName(EdDSANamedCurveTable.CURVE_ED25519_SHA512)))
             return null;
-        int totlen = 14 + seed.length;
+        int totlen = 16 + seed.length;
         byte[] rv = new byte[totlen];
         int idx = 0;
         // sequence
         rv[idx++] = 0x30;
-        rv[idx++] = (byte) (12 + seed.length);
+        rv[idx++] = (byte) (14 + seed.length);
 
         // version
         rv[idx++] = 0x02;
@@ -143,9 +150,13 @@ public class EdDSAPrivateKey implements EdDSAKey, PrivateKey {
         rv[idx++] = 101;
         rv[idx++] = (byte) OID_ED25519;
         // params - absent
-        // the key
+        // PrivateKey
+        rv[idx++] = 0x04;  // octet string
+        rv[idx++] = (byte) (2 + seed.length);
+        // EdPrivateKey
         rv[idx++] = 0x04;  // octet string
         rv[idx++] = (byte) seed.length;
+        // the key
         System.arraycopy(seed, 0, rv, idx, seed.length);
         return rv;
     }
@@ -164,7 +175,7 @@ public class EdDSAPrivateKey implements EdDSAKey, PrivateKey {
     private static byte[] decode(byte[] d) throws InvalidKeySpecException {
         try {
             int idx = 0;
-            int totlen = 44;
+            int totlen = 46;
             int idlen = 5;
             int doid = d[OID_BYTE];
             if (doid == OID_OLD) {
@@ -192,6 +203,12 @@ public class EdDSAPrivateKey implements EdDSAKey, PrivateKey {
                 if (d[idx++] != 0x0a ||
                     d[idx++] != 1 ||
                     d[idx++] != 1) {
+                    throw new InvalidKeySpecException("unsupported key spec");
+                }
+            } else {
+                // PrivateKey wrapping the EdPrivateKey
+                if (d[idx++] != 0x04 ||
+                    d[idx++] != 34) {
                     throw new InvalidKeySpecException("unsupported key spec");
                 }
             }
